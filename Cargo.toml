@@ -1,0 +1,75 @@
+[package]
+name = "lumen-compiler"
+version = "0.1.0"
+edition = "2021"
+authors = ["Lumen Team"]
+description = "超高性能的代码编译工具，比SWC更快"
+license = "MIT"
+
+[dependencies]
+# 并行计算
+rayon = "1.8.0"
+# 高效序列化/反序列化
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# 命令行参数解析
+clap = { version = "4.4", features = ["derive"] }
+# 日志系统
+log = "0.4"
+env_logger = "0.10"
+# 文件系统操作
+walkdir = "2.4"
+glob = "0.3"
+# 高性能哈希
+ahash = "0.8"
+# 内存池和缓存管理
+lru = "0.12"
+bytes = "1.5"
+# 错误处理
+thiserror = "1.0"
+anyhow = "1.0"
+# 异步运行时
+tokio = { version = "1.33", features = ["full"] }
+# FFI绑定支持 (用于C++集成)
+libc = "0.2"
+bindgen = "0.69"
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3.8"
+
+[build-dependencies]
+cc = "1.0"
+bindgen = "0.69"
+
+[lib]
+name = "lumen"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lumen"
+path = "src/main.rs"
+
+[features]
+default = ["parallel", "wasm"]
+parallel = []
+wasm = []
+llvm = []
+gpu = []
+
+# 优化编译设置
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+panic = "abort"
+strip = true
+
+[workspace]
+members = [
+    "crates/lumen-core",
+    "crates/lumen-parser",
+    "crates/lumen-compiler",
+    "crates/lumen-optimizers",
+    "crates/lumen-wasm",
+] 
