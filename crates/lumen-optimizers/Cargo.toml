@@ -1,0 +1,16 @@
+[package]
+name = "lumen-optimizers"
+version = "0.1.0"
+edition = "2021"
+authors = ["Lumen Team"]
+description = "Code optimizers for Lumen compiler"
+license = "MIT"
+
+[dependencies]
+lumen-core = { path = "../lumen-core" }
+lumen-compiler = { path = "../lumen-compiler" }
+lumen-parser = { path = "../lumen-parser" }
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+anyhow = "1.0"
+log = "0.4" 

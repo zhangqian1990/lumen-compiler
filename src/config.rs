@@ -29,7 +29,7 @@ impl Default for CompileOptions {
 }
 
 /// 完整的Lumen配置
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// 是否启用代码压缩
     pub minify: bool,

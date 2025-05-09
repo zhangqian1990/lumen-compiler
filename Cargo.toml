@@ -1,5 +1,5 @@
 [package]
-name = "lumen-compiler"
+name = "lumen-project"
 version = "0.1.0"
 edition = "2021"
 authors = ["Lumen Team"]
@@ -7,6 +7,12 @@ description = "超高性能的代码编译工具，比SWC更快"
 license = "MIT"
 
 [dependencies]
+# 子包依赖
+lumen-core = { path = "crates/lumen-core" }
+lumen-parser = { path = "crates/lumen-parser" }
+lumen-compiler = { path = "crates/lumen-compiler" }
+lumen-optimizers = { path = "crates/lumen-optimizers" }
+lumen-wasm = { path = "crates/lumen-wasm" }
 # 并行计算
 rayon = "1.8.0"
 # 高效序列化/反序列化
@@ -33,10 +39,15 @@ tokio = { version = "1.33", features = ["full"] }
 # FFI绑定支持 (用于C++集成)
 libc = "0.2"
 bindgen = "0.69"
+# 临时文件操作
+tempfile = "3.8"
+# 随机数生成
+rand = "0.8"
+# Base64编码/解码
+base64 = "0.21"
 
 [dev-dependencies]
 criterion = "0.5"
-tempfile = "3.8"
 
 [build-dependencies]
 cc = "1.0"
@@ -72,4 +83,8 @@ members = [
     "crates/lumen-compiler",
     "crates/lumen-optimizers",
     "crates/lumen-wasm",
-] 
+]
+
+[[example]]
+name = "compiler_bench"
+path = "examples/compiler_bench.rs" 

@@ -3,13 +3,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 use log::{debug, info, warn};
+use anyhow::{Result, anyhow};
 
 // 引入核心模块和解析器
 extern crate lumen_core;
 extern crate lumen_parser;
 
 use lumen_core::{IR, NodeType, NodeValue, CodegenOptions};
-use lumen_parser::{ParseOptions, JsParser};
+use lumen_parser::{ParseOptions, JsParser, parse_string};
 
 /// 编译结果
 #[derive(Debug, Clone)]
@@ -43,6 +44,9 @@ pub struct CompileOptions {
     pub cache_enabled: bool,
     /// 额外选项
     pub extra_options: HashMap<String, String>,
+    pub minify: bool,
+    pub sourcemap: bool,
+    pub target: String,
 }
 
 impl Default for CompileOptions {
@@ -54,6 +58,9 @@ impl Default for CompileOptions {
             distributed: false,
             cache_enabled: true,
             extra_options: HashMap::new(),
+            minify: false,
+            sourcemap: false,
+            target: "es2020".to_string(),
         }
     }
 }
@@ -129,19 +136,19 @@ impl CodeGenerator {
                         let ident = &node.children[0];
                         let value = &node.children[1];
                         
-                        if let Some(name) = ident.get_string_value("name") {
+                        if let Some(name) = ident.0.get_string_value("name") {
                             output.push_str(name);
                             output.push_str(" = ");
                         }
                         
-                        match value.node_type {
+                        match value.0.node_type {
                             NodeType::NumericLiteral => {
-                                if let Some(val) = value.get_number_value("value") {
+                                if let Some(val) = value.0.get_number_value("value") {
                                     output.push_str(&val.to_string());
                                 }
                             },
                             NodeType::StringLiteral => {
-                                if let Some(val) = value.get_string_value("value") {
+                                if let Some(val) = value.0.get_string_value("value") {
                                     output.push_str("\"");
                                     output.push_str(val);
                                     output.push_str("\"");
@@ -213,7 +220,7 @@ impl Compiler {
     }
     
     /// 编译JavaScript/TypeScript字符串
-    pub fn compile_string(&self, source: &str) -> Result<CompileResult, String> {
+    pub fn compile_string(&self, source: &str) -> Result<CompileResult> {
         let start = Instant::now();
         info!("开始编译字符串, 长度: {} 字节", source.len());
         
@@ -233,14 +240,18 @@ impl Compiler {
         if let Some(cached) = ctx.get_cache(&cache_key) {
             info!("从缓存中获取编译结果");
             let elapsed = start.elapsed();
+            
+            // 计算输出大小
+            let output_size = cached.len();
+            
             return Ok(CompileResult {
                 code: cached,
                 source_map: None, // TODO: 缓存source map
                 time_ms: elapsed.as_millis() as u64,
                 input_size: source.len(),
-                output_size: cached.len(),
+                output_size,
                 compression_ratio: if source.len() > 0 {
-                    1.0 - (cached.len() as f64 / source.len() as f64)
+                    1.0 - (output_size as f64 / source.len() as f64)
                 } else {
                     0.0
                 },
@@ -266,9 +277,10 @@ impl Compiler {
         ctx.record_perf("codegen", codegen_time.as_millis() as u64);
         debug!("代码生成完成，耗时: {:?}", codegen_time);
         
-        // 计算压缩率
+        // 计算压缩率和输出大小
+        let output_size = output.len();
         let compression_ratio = if source.len() > 0 {
-            1.0 - (output.len() as f64 / source.len() as f64)
+            1.0 - (output_size as f64 / source.len() as f64)
         } else {
             0.0
         };
@@ -287,13 +299,13 @@ impl Compiler {
             source_map: None, // TODO: 实现sourcemap生成
             time_ms: elapsed.as_millis() as u64,
             input_size: source.len(),
-            output_size: output.len(),
+            output_size,
             compression_ratio,
         })
     }
     
     /// 编译文件
-    pub fn compile_file<P: AsRef<Path>>(&self, input: P, output: Option<P>) -> Result<CompileResult, String> {
+    pub fn compile_file<P: AsRef<Path>>(&self, input: P, output: Option<P>) -> Result<CompileResult> {
         let input_path = input.as_ref();
         let output_path = output.map(|p| p.as_ref().to_path_buf());
         
@@ -301,7 +313,7 @@ impl Compiler {
         
         // 读取输入文件
         let source = std::fs::read_to_string(input_path)
-            .map_err(|e| format!("读取文件失败: {}", e))?;
+            .map_err(|e| anyhow!("读取文件失败: {}", e))?;
         
         // 根据文件扩展名自动配置解析选项
         let mut options = self.options.clone();
@@ -326,7 +338,7 @@ impl Compiler {
         // 如果指定了输出路径，写入文件
         if let Some(path) = output_path {
             std::fs::write(&path, &result.code)
-                .map_err(|e| format!("写入输出文件失败: {}", e))?;
+                .map_err(|e| anyhow!("写入输出文件失败: {}", e))?;
             info!("输出文件已写入: {}", path.display());
         }
         
@@ -334,14 +346,14 @@ impl Compiler {
     }
     
     /// 批量编译文件
-    pub fn compile_files<P: AsRef<Path>>(&self, inputs: &[P], output_dir: Option<P>) -> Result<Vec<CompileResult>, String> {
+    pub fn compile_files<P: AsRef<Path>>(&self, inputs: &[P], output_dir: Option<P>) -> Result<Vec<CompileResult>> {
         let output_dir = output_dir.map(|p| p.as_ref().to_path_buf());
         
         // 如果指定了输出目录，确保它存在
         if let Some(dir) = &output_dir {
             if !dir.exists() {
                 std::fs::create_dir_all(dir)
-                    .map_err(|e| format!("创建输出目录失败: {}", e))?;
+                    .map_err(|e| anyhow!("创建输出目录失败: {}", e))?;
             }
         }
         
@@ -351,9 +363,8 @@ impl Compiler {
             warn!("分布式编译尚未实现，回退到本地编译");
         }
         
-        // 使用rayon并行处理
-        use rayon::prelude::*;
-        let results: Vec<Result<CompileResult, String>> = inputs.par_iter().map(|input| {
+        // 使用迭代器处理
+        let results: Vec<Result<CompileResult>> = inputs.iter().map(|input| {
             let input_path = input.as_ref();
             let output_path = match &output_dir {
                 Some(dir) => {
@@ -367,7 +378,9 @@ impl Compiler {
                 None => None,
             };
             
-            self.compile_file(input_path, output_path.as_ref())
+            // 创建引用转换，解决类型不匹配问题
+            let output_ref = output_path.as_ref().map(|p| p.as_path());
+            self.compile_file(input_path, output_ref)
         }).collect();
         
         // 处理结果
@@ -440,13 +453,18 @@ impl Compiler {
 // 便捷函数
 
 /// 快速编译JavaScript字符串
-pub fn compile_js(source: &str) -> Result<String, String> {
+pub fn compile_js(source: &str) -> Result<String> {
     let compiler = Compiler::new();
     compiler.compile_string(source).map(|r| r.code)
 }
 
 /// 快速编译JavaScript文件
-pub fn compile_file<P: AsRef<Path>>(input: P, output: Option<P>) -> Result<(), String> {
+pub fn compile_file<P: AsRef<Path>>(input: P, output: Option<P>) -> Result<()> {
     let compiler = Compiler::new();
     compiler.compile_file(input, output).map(|_| ())
+}
+
+pub fn compile_string(source: &str) -> Result<String> {
+    let compiler = Compiler::new();
+    compiler.compile_string(source).map(|r| r.code)
 } 

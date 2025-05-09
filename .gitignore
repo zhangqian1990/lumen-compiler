@@ -1,0 +1,47 @@
+# 编译生成的文件
+/target/
+**/*.rs.bk
+
+# IDE相关文件
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# 代码覆盖率生成的文件
+*.profraw
+*.gcda
+*.gcno
+coverage/
+
+# 本地配置
+.env
+.env.local
+config.local.toml
+
+# 依赖和锁文件（取决于项目需求可能需要注释掉）
+# Cargo.lock
+
+# 临时文件
+*.swp
+*.swo
+*.tmp
+*~
+
+# 日志文件
+*.log
+
+# 二进制文件和库
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+*.o
+
+# 生成的文档
+/doc/
+/docs/target/
+
+# Benchmark结果
+benchmark_results/ 

@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use log::{debug, info, warn};
+use anyhow::Result;
 
 // 引入核心模块
 extern crate lumen_core;
-use lumen_core::{IR, Node, NodeType, NodeValue};
+use lumen_core::{IR, Node, NodeType, NodeValue, NodeRef};
 
 /// 优化级别
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,31 +192,31 @@ impl ConstantFolding {
         Self { options }
     }
     
-    fn evaluate_constant_expression(&self, node: &Node) -> Option<NodeValue> {
-        match node.node_type {
+    fn evaluate_constant_expression(&self, node: &NodeRef) -> Option<NodeValue> {
+        match node.0.node_type {
             NodeType::NumericLiteral => {
-                node.get_value("value").cloned()
+                node.0.get_value("value").cloned()
             },
             NodeType::StringLiteral => {
-                node.get_value("value").cloned()
+                node.0.get_value("value").cloned()
             },
             NodeType::BooleanLiteral => {
-                node.get_value("value").cloned()
+                node.0.get_value("value").cloned()
             },
             NodeType::BinaryExpression => {
-                if node.children.len() != 2 {
+                if node.0.children.len() != 2 {
                     return None;
                 }
                 
-                let left = &node.children[0];
-                let right = &node.children[1];
+                let left = &node.0.children[0];
+                let right = &node.0.children[1];
                 
                 // 递归评估左右操作数
                 let left_value = self.evaluate_constant_expression(left)?;
                 let right_value = self.evaluate_constant_expression(right)?;
                 
                 // 获取操作符
-                let operator = node.get_string_value("operator")?;
+                let operator = node.0.get_string_value("operator")?;
                 
                 // 执行操作
                 match (left_value, right_value, operator) {
@@ -444,4 +445,78 @@ pub fn create_default_pipeline(level: OptimizationLevel) -> OptimizationPipeline
 pub fn optimize(ir: &mut IR, level: OptimizationLevel) -> Vec<OptimizationResult> {
     let pipeline = create_default_pipeline(level);
     pipeline.run(ir)
+}
+
+pub struct LumenOptimizer {
+    config: OptimizerConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct OptimizerConfig {
+    pub enable_tree_shaking: bool,
+    pub enable_dead_code_elimination: bool,
+    pub enable_constant_folding: bool,
+}
+
+impl Default for OptimizerConfig {
+    fn default() -> Self {
+        Self {
+            enable_tree_shaking: true,
+            enable_dead_code_elimination: true,
+            enable_constant_folding: true,
+        }
+    }
+}
+
+impl LumenOptimizer {
+    pub fn new() -> Self {
+        Self {
+            config: OptimizerConfig::default(),
+        }
+    }
+
+    pub fn with_config(config: OptimizerConfig) -> Self {
+        Self { config }
+    }
+
+    pub fn optimize(&self, ir: &mut IR) -> Result<()> {
+        // 简单实现，实际项目中应完整实现各种优化
+        
+        // 常量折叠
+        if self.config.enable_constant_folding {
+            self.fold_constants(ir)?;
+        }
+        
+        // 删除无用代码
+        if self.config.enable_dead_code_elimination {
+            self.eliminate_dead_code(ir)?;
+        }
+        
+        // 树摇
+        if self.config.enable_tree_shaking {
+            self.shake_tree(ir)?;
+        }
+        
+        Ok(())
+    }
+
+    fn fold_constants(&self, _ir: &mut IR) -> Result<()> {
+        // 简单实现
+        Ok(())
+    }
+
+    fn eliminate_dead_code(&self, _ir: &mut IR) -> Result<()> {
+        // 简单实现
+        Ok(())
+    }
+
+    fn shake_tree(&self, _ir: &mut IR) -> Result<()> {
+        // 简单实现
+        Ok(())
+    }
+}
+
+pub fn optimize_ir(ir: &mut IR) -> Result<()> {
+    let optimizer = LumenOptimizer::new();
+    optimizer.optimize(ir)
 } 

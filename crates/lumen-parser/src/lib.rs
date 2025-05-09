@@ -2,10 +2,10 @@ use std::sync::Arc;
 use std::path::Path;
 use std::time::Instant;
 use log::{debug, info, warn};
+use anyhow::{Result, anyhow};
 
 // 引入核心模块
-extern crate lumen_core;
-use lumen_core::{IR, Node, NodeType, NodeValue, SourceLocation};
+use lumen_core::IR;
 
 /// 解析选项
 #[derive(Debug, Clone)]
@@ -167,60 +167,23 @@ impl Lexer {
 
 /// 语法解析器
 pub struct Parser {
-    tokens: Vec<Token>,
-    current: usize,
-    options: ParseOptions,
-    ir: IR,
+    source: String,
+    current_pos: usize,
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>, options: ParseOptions) -> Self {
+    pub fn new(source: &str) -> Self {
         Self {
-            tokens,
-            current: 0,
-            options,
-            ir: IR::new(),
+            source: source.to_string(),
+            current_pos: 0,
         }
     }
-    
-    pub fn parse(&mut self) -> IR {
-        // TODO: 实现语法分析
-        // 这里只是一个极简的示例
-        
-        if let Some(filename) = &self.options.filename {
-            self.ir = self.ir.clone().with_source_path(filename);
-        }
-        
-        // 创建一个变量声明节点示例
-        let var_decl_id = self.ir.create_node(NodeType::VariableDeclaration);
-        if let Some(mut var_decl) = self.ir.nodes.get_mut(&var_decl_id) {
-            let var_decl = Arc::make_mut(var_decl);
-            var_decl.set_value("kind", NodeValue::String("var".to_string()));
-            var_decl.set_value("constant", NodeValue::Boolean(false));
-            
-            // 创建一个标识符节点
-            let ident_id = self.ir.create_node(NodeType::Identifier);
-            if let Some(mut ident) = self.ir.nodes.get_mut(&ident_id) {
-                let ident = Arc::make_mut(ident);
-                ident.set_value("name", NodeValue::String("x".to_string()));
-            }
-            
-            // 创建一个字面量节点
-            let lit_id = self.ir.create_node(NodeType::NumericLiteral);
-            if let Some(mut lit) = self.ir.nodes.get_mut(&lit_id) {
-                let lit = Arc::make_mut(lit);
-                lit.set_value("value", NodeValue::Number(42.0));
-            }
-            
-            // 将标识符和字面量添加为变量声明的子节点
-            self.ir.add_child(var_decl_id, ident_id);
-            self.ir.add_child(var_decl_id, lit_id);
-        }
-        
-        // 将变量声明添加为程序的子节点
-        self.ir.add_child(self.ir.root_id, var_decl_id);
-        
-        self.ir.clone()
+
+    pub fn parse(&mut self) -> Result<IR> {
+        // 简单实现，实际项目中应完整解析
+        let ir = IR::new();
+        // 基本的解析逻辑
+        Ok(ir)
     }
 }
 
@@ -246,7 +209,7 @@ impl DFA {
     
     pub fn add_transition(&mut self, from: usize, on: char, to: usize) {
         if let Some(row) = self.transition_table.get_mut(from) {
-            if on as usize < row.len() {
+            if (on as usize) < row.len() {
                 row[on as usize] = to;
             }
         }
@@ -280,7 +243,7 @@ impl JsParser {
         Self { options }
     }
     
-    pub fn parse_string(&self, source: &str) -> Result<IR, String> {
+    pub fn parse_string(&self, source: &str) -> Result<IR> {
         let start = Instant::now();
         debug!("开始解析字符串，长度: {} 字符", source.len());
         
@@ -291,21 +254,21 @@ impl JsParser {
         debug!("词法分析完成，产生 {} 个词法单元，耗时: {:?}", tokens.len(), start.elapsed());
         
         // 语法分析
-        let mut parser = Parser::new(tokens, self.options.clone());
-        let ir = parser.parse();
+        let mut parser = Parser::new(source);
+        let ir = parser.parse()?;
         
         info!("解析完成，耗时: {:?}", start.elapsed());
         
         Ok(ir)
     }
     
-    pub fn parse_file<P: AsRef<Path>>(&self, path: P) -> Result<IR, String> {
+    pub fn parse_file<P: AsRef<Path>>(&self, path: P) -> Result<IR> {
         let path = path.as_ref();
         info!("解析文件: {}", path.display());
         
         // 读取文件内容
         let source = std::fs::read_to_string(path)
-            .map_err(|e| format!("读取文件失败: {}", e))?;
+            .map_err(|e| anyhow!("读取文件失败: {}", e))?;
         
         // 基于文件扩展名自动设置选项
         let mut options = self.options.clone();
@@ -323,8 +286,7 @@ impl JsParser {
             }
         }
         
-        let parser = JsParser::new(options);
-        parser.parse_string(&source)
+        self.parse_string(&source)
     }
 }
 
@@ -362,21 +324,26 @@ pub fn create_tsx_parser() -> JsParser {
 }
 
 /// 快速解析JavaScript字符串
-pub fn parse_js(source: &str) -> Result<IR, String> {
+pub fn parse_js(source: &str) -> Result<IR> {
     create_js_parser().parse_string(source)
 }
 
 /// 快速解析TypeScript字符串
-pub fn parse_ts(source: &str) -> Result<IR, String> {
+pub fn parse_ts(source: &str) -> Result<IR> {
     create_ts_parser().parse_string(source)
 }
 
 /// 快速解析JSX字符串
-pub fn parse_jsx(source: &str) -> Result<IR, String> {
+pub fn parse_jsx(source: &str) -> Result<IR> {
     create_jsx_parser().parse_string(source)
 }
 
 /// 快速解析TSX字符串
-pub fn parse_tsx(source: &str) -> Result<IR, String> {
+pub fn parse_tsx(source: &str) -> Result<IR> {
     create_tsx_parser().parse_string(source)
+}
+
+pub fn parse_string(source: &str) -> Result<IR> {
+    let mut parser = Parser::new(source);
+    parser.parse()
 } 

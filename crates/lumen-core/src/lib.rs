@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
 
 /// 节点类型枚举
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NodeType {
     // 顶层结构
     Program,
@@ -58,7 +59,7 @@ pub enum NodeType {
 }
 
 /// 源代码位置信息
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SourceLocation {
     pub start_line: usize,
     pub start_column: usize,
@@ -90,25 +91,48 @@ impl fmt::Display for SourceLocation {
     }
 }
 
-/// 节点属性
+/// 创建一个可序列化的包装类型
 #[derive(Debug, Clone, PartialEq)]
+pub struct NodeRef(pub Arc<Node>);
+
+impl Serialize for NodeRef {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for NodeRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let node = Node::deserialize(deserializer)?;
+        Ok(NodeRef(Arc::new(node)))
+    }
+}
+
+/// 节点属性
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NodeValue {
     String(String),
     Number(f64),
     Boolean(bool),
     Null,
-    Array(Vec<Arc<Node>>),
-    Object(HashMap<String, Arc<Node>>),
+    Array(Vec<NodeRef>),
+    Object(HashMap<String, NodeRef>),
 }
 
 /// AST节点
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     pub id: usize,
     pub node_type: NodeType,
     pub values: HashMap<String, NodeValue>,
     pub location: Option<SourceLocation>,
-    pub children: Vec<Arc<Node>>,
+    pub children: Vec<NodeRef>,
     pub parent: Option<usize>,
 }
 
@@ -135,7 +159,7 @@ impl Node {
     }
     
     pub fn add_child(&mut self, child: Arc<Node>) {
-        self.children.push(child);
+        self.children.push(NodeRef(child));
     }
     
     pub fn set_value(&mut self, key: &str, value: NodeValue) {
@@ -169,9 +193,9 @@ impl Node {
 }
 
 /// Lumen中间表示（IR）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IR {
-    pub nodes: HashMap<usize, Arc<Node>>,
+    pub nodes: HashMap<usize, NodeRef>,
     pub root_id: usize,
     pub next_id: usize,
     pub source_path: Option<String>,
@@ -182,7 +206,7 @@ impl IR {
         let root_id = 0;
         let mut nodes = HashMap::new();
         let root = Arc::new(Node::new(root_id, NodeType::Program));
-        nodes.insert(root_id, root);
+        nodes.insert(root_id, NodeRef(root));
         
         Self {
             nodes,
@@ -200,11 +224,11 @@ impl IR {
     pub fn get_root(&self) -> Arc<Node> {
         self.nodes.get(&self.root_id)
             .expect("根节点应该始终存在")
-            .clone()
+            .0.clone()
     }
     
     pub fn get_node(&self, id: usize) -> Option<Arc<Node>> {
-        self.nodes.get(&id).cloned()
+        self.nodes.get(&id).cloned().map(|node_ref| node_ref.0)
     }
     
     pub fn create_node(&mut self, node_type: NodeType) -> usize {
@@ -212,17 +236,22 @@ impl IR {
         self.next_id += 1;
         
         let node = Arc::new(Node::new(id, node_type));
-        self.nodes.insert(id, node);
+        self.nodes.insert(id, NodeRef(node));
         
         id
     }
     
     pub fn add_child(&mut self, parent_id: usize, child_id: usize) {
-        if let Some(parent) = self.nodes.get_mut(&parent_id) {
-            let mut parent = Arc::make_mut(parent);
-            if let Some(child) = self.nodes.get(&child_id) {
-                parent.add_child(child.clone());
-            }
+        // 获取子节点的克隆，避免同时持有可变和不可变借用
+        let child_clone = match self.nodes.get(&child_id) {
+            Some(child_ref) => child_ref.0.clone(),
+            None => return,
+        };
+        
+        // 现在处理父节点
+        if let Some(parent_ref) = self.nodes.get_mut(&parent_id) {
+            let parent = Arc::make_mut(&mut parent_ref.0);
+            parent.add_child(child_clone);
         }
     }
     
@@ -237,7 +266,7 @@ impl IR {
             
             // 先放后边的节点，这样能先处理前面的节点（深度优先）
             for child in node.children.iter().rev() {
-                stack.push(child.clone());
+                stack.push(child.0.clone());
             }
         }
     }
@@ -272,5 +301,36 @@ impl Default for CodegenOptions {
             inline_sources: false,
             preserve_comments: true,
         }
+    }
+}
+
+// 错误处理模块
+pub mod error {
+    use thiserror::Error;
+
+    #[derive(Error, Debug)]
+    pub enum CoreError {
+        #[error("一般错误: {0}")]
+        General(String),
+    }
+
+    pub type Result<T> = std::result::Result<T, CoreError>;
+}
+
+// 类型定义模块
+pub mod types {
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum NodeType {
+        Program,
+        Expression,
+        Statement,
+        Identifier,
+        Literal,
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Node {
+        pub id: usize,
+        pub node_type: NodeType,
     }
 } 

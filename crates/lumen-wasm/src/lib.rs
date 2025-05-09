@@ -1,15 +1,11 @@
 use std::path::Path;
-use std::sync::Arc;
-use log::{debug, info, warn};
+use log::{debug, info};
+use anyhow::{Result, anyhow};
 
 // 引入其他模块
-extern crate lumen_core;
-extern crate lumen_parser;
-extern crate lumen_compiler;
-
 use lumen_core::IR;
+use lumen_compiler::CompileOptions;
 use lumen_parser::{ParseOptions, JsParser};
-use lumen_compiler::{CompileResult, CompileOptions, Compiler};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -110,15 +106,12 @@ impl WasmTransformer {
         Self { options }
     }
     
-    pub fn transform_to_wasm(&self, ir: &IR, format: WasmOutputFormat) -> Result<WasmTransformResult, String> {
+    pub fn transform_to_wasm(&self, _ir: &IR, format: WasmOutputFormat) -> Result<WasmTransformResult> {
         let start = std::time::Instant::now();
         debug!("开始转换IR到WebAssembly，格式: {:?}", format);
         
         // TODO: 实现IR到WASM的转换
         // 这里只是一个简单的示例
-        
-        // 模拟转换过程
-        std::thread::sleep(std::time::Duration::from_millis(50));
         
         // 生成模拟结果
         let output = match format {
@@ -164,7 +157,7 @@ impl WasmTransformer {
         })
     }
     
-    pub fn transform_js(&self, source: &str, format: WasmOutputFormat) -> Result<WasmTransformResult, String> {
+    pub fn transform_js(&self, source: &str, format: WasmOutputFormat) -> Result<WasmTransformResult> {
         debug!("解析并转换JavaScript到WebAssembly");
         
         // 解析JavaScript
@@ -175,35 +168,35 @@ impl WasmTransformer {
         self.transform_to_wasm(&ir, format)
     }
     
-    pub fn transform_file<P: AsRef<Path>>(&self, input: P, format: WasmOutputFormat) -> Result<WasmTransformResult, String> {
+    pub fn transform_file<P: AsRef<Path>>(&self, input: P, format: WasmOutputFormat) -> Result<WasmTransformResult> {
         let input_path = input.as_ref();
         info!("转换文件到WebAssembly: {}", input_path.display());
         
         // 读取输入文件
         let source = std::fs::read_to_string(input_path)
-            .map_err(|e| format!("读取文件失败: {}", e))?;
+            .map_err(|e| anyhow!("读取文件失败: {}", e))?;
         
         self.transform_js(&source, format)
     }
     
-    pub fn write_output<P: AsRef<Path>>(&self, result: &WasmTransformResult, output_path: P) -> Result<(), String> {
+    pub fn write_output<P: AsRef<Path>>(&self, result: &WasmTransformResult, output_path: P) -> Result<()> {
         let output_path = output_path.as_ref();
         info!("写入WebAssembly输出: {}", output_path.display());
         
         std::fs::write(output_path, &result.output)
-            .map_err(|e| format!("写入输出文件失败: {}", e))?;
+            .map_err(|e| anyhow!("写入输出文件失败: {}", e))?;
         
         // 如果生成了TypeScript类型定义，写入相应的.d.ts文件
         if let Some(ref ts_types) = result.typescript_types {
             let mut ts_path = output_path.to_path_buf();
             let file_stem = output_path.file_stem()
-                .ok_or_else(|| "无法获取文件名".to_string())?
+                .ok_or_else(|| anyhow!("无法获取文件名"))?
                 .to_string_lossy();
             
             ts_path.set_file_name(format!("{}.d.ts", file_stem));
             
             std::fs::write(&ts_path, ts_types)
-                .map_err(|e| format!("写入TypeScript类型定义失败: {}", e))?;
+                .map_err(|e| anyhow!("写入TypeScript类型定义失败: {}", e))?;
             
             info!("TypeScript类型定义已写入: {}", ts_path.display());
         }
@@ -224,62 +217,87 @@ fn format_to_string(format: WasmOutputFormat) -> &'static str {
 
 /// Wasm编译器 - 结合编译和Wasm转换
 pub struct WasmCompiler {
-    options: WasmTransformOptions,
+    config: WasmConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct WasmConfig {
+    pub optimize_level: u8,
+    pub enable_simd: bool,
+    pub enable_threads: bool,
+}
+
+impl Default for WasmConfig {
+    fn default() -> Self {
+        Self {
+            optimize_level: 1,
+            enable_simd: false,
+            enable_threads: false,
+        }
+    }
 }
 
 impl WasmCompiler {
     pub fn new() -> Self {
         Self {
-            options: WasmTransformOptions::default(),
+            config: WasmConfig::default(),
         }
     }
-    
-    pub fn with_options(options: WasmTransformOptions) -> Self {
-        Self { options }
+
+    pub fn with_config(config: WasmConfig) -> Self {
+        Self { config }
+    }
+
+    pub fn compile_to_wasm(&self, _ir: &IR) -> Result<Vec<u8>> {
+        // 简单实现，返回一个最小的WASM模块
+        // 实际实现应转换IR到WASM
+        let min_wasm_module = vec![
+            0x00, 0x61, 0x73, 0x6d, // magic: \0asm
+            0x01, 0x00, 0x00, 0x00, // version: 1
+        ];
+        
+        Ok(min_wasm_module)
     }
     
-    pub fn compile_to_wasm(&self, source: &str, format: WasmOutputFormat) -> Result<WasmTransformResult, String> {
-        let transformer = WasmTransformer::new(self.options.clone());
-        transformer.transform_js(source, format)
+    // 添加从源字符串编译的方法
+    pub fn compile_from_source(&self, source: &str) -> Result<Vec<u8>> {
+        // 在实际实现中，应该先解析源码得到IR，然后编译到WASM
+        // 这里简单返回一个最小的WASM模块
+        info!("从源代码编译到WASM，长度: {} 字节", source.len());
+        
+        let min_wasm_module = vec![
+            0x00, 0x61, 0x73, 0x6d, // magic: \0asm
+            0x01, 0x00, 0x00, 0x00, // version: 1
+        ];
+        
+        Ok(min_wasm_module)
     }
     
-    pub fn compile_file_to_wasm<P: AsRef<Path>>(
-        &self,
-        input: P,
-        output: P,
-        format: WasmOutputFormat
-    ) -> Result<(), String> {
-        let transformer = WasmTransformer::new(self.options.clone());
-        let result = transformer.transform_file(input, format)?;
-        transformer.write_output(&result, output)
+    // 添加编译文件的方法
+    pub fn compile_file<P: AsRef<Path>>(&self, input_path: P, output_path: P) -> Result<()> {
+        let input = input_path.as_ref();
+        let output = output_path.as_ref();
+        
+        info!("编译文件到WASM: {} -> {}", input.display(), output.display());
+        
+        // 读取输入文件
+        let source = std::fs::read_to_string(input)
+            .map_err(|e| anyhow!("读取文件失败: {}", e))?;
+        
+        // 编译到WASM
+        let wasm_data = self.compile_from_source(&source)?;
+        
+        // 写入输出文件
+        std::fs::write(output, &wasm_data)
+            .map_err(|e| anyhow!("写入输出文件失败: {}", e))?;
+        
+        Ok(())
     }
-    
-    // 设置选项方法
-    
-    pub fn with_target(mut self, target: &str) -> Self {
-        self.options.compile_options.codegen_options.target = target.to_string();
-        self
-    }
-    
-    pub fn with_simd(mut self, enable: bool) -> Self {
-        self.options.wasm_options.enable_simd = enable;
-        self
-    }
-    
-    pub fn with_threads(mut self, enable: bool) -> Self {
-        self.options.wasm_options.enable_threads = enable;
-        self
-    }
-    
-    pub fn with_typescript(mut self, enable: bool) -> Self {
-        self.options.generate_types = enable;
-        self
-    }
-    
-    pub fn with_es_module(mut self, enable: bool) -> Self {
-        self.options.es_module = enable;
-        self
-    }
+}
+
+pub fn compile_to_wasm(ir: &IR) -> Result<Vec<u8>> {
+    let compiler = WasmCompiler::new();
+    compiler.compile_to_wasm(ir)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -344,16 +362,14 @@ impl WasmCompilerJS {
 }
 
 // 便捷函数
-
 /// 快速将JavaScript转换为Wasm
-pub fn js_to_wasm(source: &str) -> Result<Vec<u8>, String> {
+pub fn js_to_wasm(source: &str) -> Result<Vec<u8>> {
     let compiler = WasmCompiler::new();
-    compiler.compile_to_wasm(source, WasmOutputFormat::Binary)
-        .map(|r| r.output)
+    compiler.compile_from_source(source)
 }
 
 /// 快速编译文件到Wasm
-pub fn compile_file_to_wasm<P: AsRef<Path>>(input: P, output: P) -> Result<(), String> {
+pub fn compile_file_to_wasm<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
     let compiler = WasmCompiler::new();
-    compiler.compile_file_to_wasm(input, output, WasmOutputFormat::Binary)
+    compiler.compile_file(input, output)
 } 

@@ -171,20 +171,16 @@ impl DistributedCompiler {
         Ok(())
     }
     
-    /// 提交编译任务
+    /// 提交单个编译任务
     pub async fn submit_task<P: AsRef<Path>>(&self, input: P, output: Option<P>) -> Result<String, String> {
-        let input_path = input.as_ref().to_path_buf();
-        let output_path = output.map(|p| p.as_ref().to_path_buf());
+        // 生成唯一任务ID
+        let task_id = generate_uuid();
         
-        info!("提交分布式编译任务: {:?} -> {:?}", input_path, output_path);
-        
-        // 创建任务ID
-        let task_id = format!("task_{}", generate_uuid());
-        
+        // 创建任务
         let task = CompileTask {
             id: task_id.clone(),
-            input_path,
-            output_path,
+            input_path: input.as_ref().to_path_buf(),
+            output_path: output.map(|p| p.as_ref().to_path_buf()),
             assigned_worker: None,
             status: TaskStatus::Waiting,
             priority: 0,
@@ -407,7 +403,7 @@ impl DistributedCompiler {
                     None => None,
                 };
                 
-                let task_id = self.submit_task(input_path, output_path.as_ref()).await?;
+                let task_id = self.submit_task(input_path, output_path.as_ref().map(|v| &**v)).await?;
                 task_ids.push(task_id);
             }
         }
